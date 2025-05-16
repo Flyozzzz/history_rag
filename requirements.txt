@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+redis>=4.5.0
+aioboto3
+python-multipart
+pydantic>=2.6
+pydantic-settings>=2.0
+python-dotenv
+tiktoken
+sentence-transformers>=2.7.0
+torch>=2.2.0
+numpy
+redisvl>=0.6.0
+celery[redis]
+openai

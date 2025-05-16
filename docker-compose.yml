@@ -1,0 +1,33 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - minio
+
+  redis:
+    image: redis/redis-stack-server:latest   # or :7.2.0-v9
+    ports:
+      - "6380:6379"        # host→container, keep if you still prefer 6380 outside
+    command: ["redis-stack-server", "--save", "60", "1", "--loglevel", "warning"]
+
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  worker:
+    build: .
+    command: ["celery", "-A", "worker.celery_app:celery", "worker", "--loglevel=info"]
+    env_file: .env
+    depends_on:
+      - redis
