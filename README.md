@@ -39,6 +39,7 @@ docker-compose run --rm worker
 - `OPENAI_API_KEY` — ключ OpenAI для суммаризации (опционально).
 - `SUMMARY_TOKEN_THRESHOLD` — порог длины истории для автоматической суммаризации.
 - `HF_EMBED_MODEL` — модель Sentence Transformers для получения эмбеддингов.
+- `STT_WS_URL` — ws адрес сервера транскрибации
 
 ## API
 
