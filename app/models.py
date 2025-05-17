@@ -45,3 +45,15 @@ class FilterResponse(BaseModel):
     kept: list[Message]
     removed: list[str]
     confidence: float
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AuthResponse(BaseModel):
+    uuid: str
+    token: str

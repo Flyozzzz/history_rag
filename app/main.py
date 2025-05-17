@@ -1,5 +1,5 @@
 import json, asyncio
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Depends, Header
 from redis import asyncio as redis
 import logging
 from typing import List, Dict, Any, Tuple
@@ -17,12 +17,17 @@ from app.models import (
     SearchResponse,
     FilterRequest,
     FilterResponse,
+    RegisterRequest,
+    LoginRequest,
+    AuthResponse,
 )
 from app.storage import upload_file
 from app.vector import upsert_embedding
 from app.transcriber import transcriber
 from app.embeddings import embed
 from app.vector import semantic_search
+from app.auth import register_user, login_user, get_current_user
+from app.encryption import encrypt_text, decrypt_text
 from worker.tasks import summarize_if_needed, update_facts
 
 settings = get_settings()
@@ -31,6 +36,16 @@ llm  = AsyncOpenAI(api_key=str(settings.openai_api_key), base_url=str(settings.o
 enc = get_encoding("cl100k_base")
 
 app = FastAPI(title="History Microservice")
+
+@app.post("/register", response_model=AuthResponse)
+async def register(req: RegisterRequest):
+    token = await register_user(req.username, req.password)
+    return {"uuid": req.username, "token": token}
+
+@app.post("/login", response_model=AuthResponse)
+async def login(req: LoginRequest):
+    token = await login_user(req.username, req.password)
+    return {"uuid": req.username, "token": token}
 
 @app.on_event("startup")
 async def startup():
@@ -62,7 +77,7 @@ async def _aggregate_facts(rds, uuid: str) -> Message | None:
     return Message(role="user", content=text)
 
 async def _add_to_stream(rds, uuid: str, msg: Message) -> str:
-    data = msg.model_dump_json()
+    data = encrypt_text(msg.model_dump_json())
     try:
         mid = await rds.xadd(stream_key(uuid), {"data": data})
         await rds.hincrby(f"user:{uuid}:stats:role", msg.role, 1)
@@ -73,12 +88,14 @@ async def _add_to_stream(rds, uuid: str, msg: Message) -> str:
         raise HTTPException(status_code=500, detail="storage error") from exc
 
 @app.get("/history", response_model=HistoryResponse)
-async def get_history(uuid: str = Query(...), limit: int = Query(20)):
+async def get_history(uuid: str = Query(...), limit: int = Query(20), user: str = Depends(get_current_user)):
+    if uuid != user:
+        raise HTTPException(status_code=403, detail="forbidden")
     rds = app.state.redis
     entries = await rds.xrevrange(stream_key(uuid), count=limit)
     messages: List[Message] = []
     for _id, obj in reversed(entries):
-        msg = Message.model_validate_json(obj[b"data"].decode())
+        msg = Message.model_validate_json(decrypt_text(obj[b"data"].decode()))
         if msg.extra and msg.extra.get("compressed") and msg.content:
             comp = base64.b64decode(msg.content)
             msg.content = gzip.decompress(comp).decode()
@@ -91,12 +108,13 @@ async def get_context(
     uuid: str = Query(...),
     limit: int = Query(10),
     top_k: int = Query(10),
+    user: str = Depends(get_current_user),
 ):
     rds = app.state.redis
     entries = await rds.xrevrange(stream_key(uuid), count=limit)
     messages: List[Message] = []
     for _id, obj in reversed(entries):
-        msg = Message.model_validate_json(obj[b"data"].decode())
+        msg = Message.model_validate_json(decrypt_text(obj[b"data"].decode()))
         if msg.extra and msg.extra.get("compressed") and msg.content:
             comp = base64.b64decode(msg.content)
             msg.content = gzip.decompress(comp).decode()
@@ -110,7 +128,7 @@ async def get_context(
         for mid in ids:
             row = await rds.xrange(stream_key(uuid), min=mid, max=mid)
             if row:
-                rmsg = Message.model_validate_json(row[0][1][b"data"].decode())
+                rmsg = Message.model_validate_json(decrypt_text(row[0][1][b"data"].decode()))
                 if rmsg.extra and rmsg.extra.get("compressed") and rmsg.content:
                     comp = base64.b64decode(rmsg.content)
                     rmsg.content = gzip.decompress(comp).decode()
@@ -124,7 +142,9 @@ async def get_context(
     return {"messages": messages, "relevant": relevant, "facts": facts, "summary": summary}
 
 @app.post("/add")
-async def add_history(req: AddRequest):
+async def add_history(req: AddRequest, user: str = Depends(get_current_user)):
+    if req.uuid != user:
+        raise HTTPException(status_code=403, detail="forbidden")
     rds = app.state.redis
     ids = []
     for msg in req.messages:
@@ -172,10 +192,12 @@ async def _embed_and_insert(uuid: str, message_id: str, text: str):
     await upsert_embedding(uuid, message_id, emb)
 
 @app.post("/summary", response_model=SummaryResponse)
-async def summarize(uuid: str = Query(...)):
+async def summarize(uuid: str = Query(...), user: str = Depends(get_current_user)):
+    if uuid != user:
+        raise HTTPException(status_code=403, detail="forbidden")
     rds = app.state.redis
     entries = await rds.xrange(stream_key(uuid))
-    full_history = [json.loads(obj[b"data"].decode()) for _id, obj in entries]
+    full_history = [json.loads(decrypt_text(obj[b"data"].decode())) for _id, obj in entries]
     messages: list[Dict[str, Any]] = []
     prompt = (
         "Summarize the following user chat history so that an LLM assistant "
@@ -197,7 +219,9 @@ async def summarize(uuid: str = Query(...)):
         raise HTTPException(status_code=500, detail="summary error") from exc
 
 @app.post("/search", response_model=SearchResponse)
-async def search(req: SearchRequest):
+async def search(req: SearchRequest, user: str = Depends(get_current_user)):
+    if req.uuid != user:
+        raise HTTPException(status_code=403, detail="forbidden")
     q_vec = await asyncio.get_running_loop().run_in_executor(None, lambda: embed(req.query))
     ids = await semantic_search(req.uuid, q_vec, k=req.top_k)
     if not ids:
@@ -208,7 +232,7 @@ async def search(req: SearchRequest):
     for mid in ids:
         data = await rds.xrange(stream_key(req.uuid), min=mid, max=mid)
         if data:
-            msg = Message.model_validate_json(data[0][1][b"data"].decode())
+            msg = Message.model_validate_json(decrypt_text(data[0][1][b"data"].decode()))
             if msg.extra and msg.extra.get("compressed") and msg.content:
                 comp = base64.b64decode(msg.content)
                 msg.content = gzip.decompress(comp).decode()
@@ -235,7 +259,9 @@ filter_fn = {
 }
 
 @app.post("/filter", response_model=FilterResponse)
-async def filter_messages(req: FilterRequest):
+async def filter_messages(req: FilterRequest, user: str = Depends(get_current_user)):
+    if req.uuid != user:
+        raise HTTPException(status_code=403, detail="forbidden")
     q_vec = await asyncio.get_running_loop().run_in_executor(
         None, lambda: embed(req.query)
     )
@@ -248,7 +274,7 @@ async def filter_messages(req: FilterRequest):
     for mid in ids:
         row = await rds.xrange(stream_key(req.uuid), min=mid, max=mid)
         if row:
-            cmsg = Message.model_validate_json(row[0][1][b"data"].decode())
+            cmsg = Message.model_validate_json(decrypt_text(row[0][1][b"data"].decode()))
             if cmsg.extra and cmsg.extra.get("compressed") and cmsg.content:
                 comp = base64.b64decode(cmsg.content)
                 cmsg.content = gzip.decompress(comp).decode()

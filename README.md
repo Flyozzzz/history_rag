@@ -40,9 +40,12 @@ docker-compose run --rm worker
 - `SUMMARY_TOKEN_THRESHOLD` — порог длины истории для автоматической суммаризации.
 - `HF_EMBED_MODEL` — модель Sentence Transformers для получения эмбеддингов.
 - `STT_WS_URL` — ws адрес сервера транскрибации
+- `ENCRYPTION_KEY` — ключ для шифрования сообщений (опционально).
 
 ## API
 
+- `POST /register` — создать нового пользователя и получить токен.
+- `POST /login` — получить токен для существующего пользователя.
 - `POST /add` — добавить список сообщений пользователя.
 - `GET /history` — получить недавнюю историю переписки.
 - `GET /context` — историю вместе с релевантными сообщениями, фактами и текущей суммаризацией.
@@ -59,13 +62,15 @@ docker-compose run --rm worker
 ```bash
 curl -X POST http://localhost:8000/add \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
   -d '{"uuid": "123", "messages": [{"role": "user", "content": "Привет"}]}'
 ```
 
 Получение последних сообщений:
 
 ```bash
-curl "http://localhost:8000/history?uuid=123&limit=5"
+curl "http://localhost:8000/history?uuid=123&limit=5" \
+  -H "Authorization: Bearer <TOKEN>"
 ```
 
 ### Пример загрузки аудио

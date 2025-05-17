@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     summary_token_threshold: int = Field(3000, alias="SUMMARY_TOKEN_THRESHOLD")
     hf_embed_model: str = Field("sentence-transformers/all-MiniLM-L6-v2", alias="HF_EMBED_MODEL")
     stt_ws_url: str | None = Field("ws://127.0.0.1:8088/ws", alias="STT_WS_URL")
+    encryption_key: str | None = Field("313fdgjiu235hcm2qtxy437q94y5tz2895x2983", alias="ENCRYPTION_KEY")
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
