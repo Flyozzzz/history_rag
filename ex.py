@@ -104,15 +104,15 @@ async def _happy_path(client: httpx.AsyncClient, user_id: str):
     resp = await client.get("/history", params={"uuid": user_id, "limit": 10})
     resp.raise_for_status()
     history = resp.json()["messages"]
+    print("History:", history)
 
-"""
     # 3) запрашиваем summary
     resp = await client.post("/summary", params={"uuid": user_id})
     resp.raise_for_status()
     summary = resp.json()["summary"]
     print("Summary:", summary)
     assert summary, "Пустая суммаризация"
-"""
+
 
 async def main():
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=10.0) as client:
