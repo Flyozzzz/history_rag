@@ -20,12 +20,13 @@ from app.models import (
 )
 from app.storage import upload_file
 from app.vector import upsert_embedding
+from app.transcriber import transcriber
 from app.embeddings import embed
 from app.vector import semantic_search
 from worker.tasks import summarize_if_needed, update_facts
 
 settings = get_settings()
-openai1 = AsyncOpenAI(api_key="sk-pro", base_url="http://178.185.225.236:44048/v1")
+llm  = AsyncOpenAI(api_key=str(settings.openai_api_key), base_url=str(settings.openai_base_url))
 
 enc = get_encoding("cl100k_base")
 
@@ -127,11 +128,26 @@ async def add_history(req: AddRequest):
     rds = app.state.redis
     ids = []
     for msg in req.messages:
-        if msg.type in ("image", "audio") and msg.extra and "file" in msg.extra:
+        if msg.type == "image" and msg.extra and "file" in msg.extra:
             upload: UploadFile = msg.extra["file"]  # type: ignore
             payload = await upload.read()
             url = await upload_file(payload, f"{req.uuid}/{upload.filename}", upload.content_type)
             msg.content = url
+        elif msg.type == "audio" and msg.extra and "file" in msg.extra:
+            upload: UploadFile = msg.extra["file"]  # type: ignore
+            payload = await upload.read()
+            audio_b64 = base64.b64encode(payload).decode()
+            transcription = ""
+            if transcriber:
+                try:
+                    transcription = await transcriber.transcribe_audio(audio_b64)
+                except Exception:
+                    logging.exception("Audio transcription failed")
+            msg.type = "text"
+            msg.content = transcription
+            if msg.extra is None:
+                msg.extra = {}
+            msg.extra["transcribed_from"] = "audio"
         if msg.type == "text" and msg.content and len(msg.content) > 500 and msg.importance < 5:
             comp = gzip.compress(msg.content.encode())
             msg.content = base64.b64encode(comp).decode()
@@ -170,7 +186,7 @@ async def summarize(uuid: str = Query(...)):
     messages.append({"role": "user", "content": prompt})
     logging.info("Summarizing history for %s", uuid)
     try:
-        resp = await openai1.chat.completions.create(
+        resp = await llm.chat.completions.create(
             model="model", messages=messages, max_tokens=13000
         )
         summary = resp.choices[0].message.content.strip()
@@ -256,7 +272,7 @@ async def filter_messages(req: FilterRequest):
     }
 
     try:
-        cmp = await openai1.chat.completions.create(
+        cmp = await llm.chat.completions.create(
             model="model",
             messages=[sys, usr],
             tools=[{"type": "function", "function": filter_fn}],
