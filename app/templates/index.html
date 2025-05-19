@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-4">History Hub Admin</h1>
+<p>Use the forms below to view user history or calendar.</p>
+<form action="/admin/history" method="get" class="mb-3">
+    <div class="mb-3">
+        <label class="form-label">User ID</label>
+        <input type="text" name="uuid" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Token</label>
+        <input type="text" name="token" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Limit</label>
+        <input type="number" name="limit" value="20" class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">View History</button>
+</form>
+<form action="/admin/calendar" method="get" class="mb-3">
+    <div class="mb-3">
+        <label class="form-label">User ID</label>
+        <input type="text" name="uuid" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Token</label>
+        <input type="text" name="token" class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">View Calendar</button>
+</form>
+<p><a href="/user/login_page" class="link-primary">User login</a></p>
+<p><a href="/user/register_page" class="link-primary">Register a new user</a></p>
+<p><a href="/company/register_page" class="link-primary">Register a new company</a></p>
+{% endblock %}

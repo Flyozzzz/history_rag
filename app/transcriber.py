@@ -27,7 +27,7 @@ class AudioTranscriber:
                 return self._clean_transcription(transcription)
         except Exception as e:
             logger.error(f"[STT] WebSocket connection error: {str(e)}")
-            raise
+            return ""
 
     @staticmethod
     def _clean_transcription(transcription: str) -> str:

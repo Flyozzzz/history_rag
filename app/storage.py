@@ -2,6 +2,8 @@ import aioboto3
 from app.config import get_settings
 import logging
 
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
 session = aioboto3.Session()
 
@@ -21,6 +23,6 @@ async def upload_file(obj: bytes, key: str, content_type: str) -> str:
         try:
             await s3.put_object(Bucket=bucket, Key=key, Body=obj, ContentType=content_type)
         except Exception as exc:
-            logging.exception("Failed to upload %s", key)
+            logger.exception("Failed to upload %s", key)
             raise
         return f"http://{settings.minio_endpoint}/{bucket}/{key}"

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-4">History for {{ uuid }}</h1>
+<ul class="list-group mb-3">
+{% for m in messages %}
+    <li class="list-group-item"><strong>{{ m.role }}:</strong> {{ m.content }}</li>
+{% endfor %}
+</ul>
+<a href="/admin" class="btn btn-link">Back</a>
+{% endblock %}

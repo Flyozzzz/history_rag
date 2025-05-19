@@ -27,7 +27,8 @@ services:
 
   worker:
     build: .
-    command: ["celery", "-A", "worker.celery_app:celery", "worker", "--loglevel=info"]
+    command:
+      ["celery", "-A", "worker.celery_app:celery", "worker", "--loglevel=info", "--beat"]
     env_file: .env
     depends_on:
       - redis

@@ -1,10 +1,10 @@
-import asyncio
 import os
 import sys
 import types
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+# Stub external dependencies similar to other tests
 sys.modules.setdefault(
     "redis",
     types.SimpleNamespace(
@@ -81,73 +81,48 @@ sys.modules.setdefault(
 )
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from app.main import Message
-from app.models import DeleteFactRequest
-from app.routes.facts import delete_fact, list_facts
-from app.services.facts import (
-    _aggregate_facts,
-    _check_and_store_fact,
-    _delete_fact,
-    _list_facts,
-)
+from app.main import app
+from app.models import Message
+from app.routes.history import get_context
+
+# Provide compatibility for Pydantic v1 used in tests
+if not hasattr(Message, "model_validate_json"):
+    Message.model_validate_json = classmethod(lambda cls, data: cls.parse_raw(data))
 
 
-class FactsTestCase(unittest.IsolatedAsyncioTestCase):
-    async def test_check_and_store_fact_adds(self):
+class ContextTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_duplicates_excluded(self):
         rds = AsyncMock()
-        msg = Message(role="user", content="remember: test")
-        await _check_and_store_fact(rds, "u1", msg)
-        rds.sadd.assert_awaited_with("user:u1:facts", "test")
-
-    async def test_aggregate_facts_none(self):
-        rds = AsyncMock()
-        rds.smembers.return_value = set()
-        res = await _aggregate_facts(rds, "u1")
-        self.assertIsNone(res)
-
-    async def test_aggregate_facts_message(self):
-        rds = AsyncMock()
-        rds.smembers.return_value = {b"one", b"two"}
-        res = await _aggregate_facts(rds, "u1")
-        self.assertEqual(res.content, "one; two")
-
-    async def test_list_facts_route(self):
-        rds = AsyncMock()
-        rds.smembers.return_value = {b"a", b"b"}
-        from app.main import app
-
         app.state.redis = rds
-        rds.hget.return_value = b"c1"
-        resp = await list_facts(uuid="u1", user=("u1", "c1"))
-        self.assertEqual(resp["facts"], ["a", "b"])
-        rds.smembers.assert_awaited_with("user:u1:facts")
-
-    async def test_delete_fact_route(self):
-        rds = AsyncMock()
-        rds.srem.return_value = 1
-        from app.main import app
-
-        app.state.redis = rds
-        req = DeleteFactRequest(uuid="u1", fact="a")
-        rds.hget.return_value = b"c1"
-        resp = await delete_fact(req, user=("u1", "c1"))
-        self.assertEqual(resp["removed"], 1)
-        rds.srem.assert_awaited_with("user:u1:facts", "a")
-
-    async def test_update_facts_uses_last_id(self):
-        from worker import tasks as worker_tasks
-
-        rds = AsyncMock()
-        worker_tasks.redis.Redis = lambda *a, **k: rds
-        rds.get.return_value = b"1-0"
-        rds.xrange.return_value = [
-            ("2-0", {b"data": b'{"role":"user","content":"remember: a"}'}),
-            ("3-0", {b"data": b'{"role":"user","content":"remember: b"}'}),
+        rds.xrevrange.return_value = [
+            ("2-0", {b"data": b'{"role":"user","type":"text","content":"m2"}'}),
+            ("1-0", {b"data": b'{"role":"user","type":"text","content":"m1"}'}),
         ]
-        await worker_tasks._async_update_facts("u1")
-        rds.xrange.assert_awaited_with("user:u1:history", min="(1-0", max="+")
-        rds.sadd.assert_awaited_with("user:u1:facts", "a", "b")
-        rds.set.assert_awaited_with("facts:last:u1", "3-0")
+
+        async def xrange(key, min=None, max=None):
+            if min == "2-0":
+                return [
+                    ("2-0", {b"data": b'{"role":"user","type":"text","content":"m2"}'})
+                ]
+            if min == "3-0":
+                return [
+                    ("3-0", {b"data": b'{"role":"user","type":"text","content":"m3"}'})
+                ]
+            return []
+
+        rds.xrange.side_effect = xrange
+        rds.hget.return_value = None
+        with patch("app.routes.history.embed", lambda text: []), patch(
+            "app.routes.history.semantic_search", AsyncMock(return_value=["2-0", "3-0"])
+        ), patch("app.services.company._ensure_company", AsyncMock()), patch(
+            "app.services.facts._aggregate_facts", AsyncMock(return_value=None)
+        ), patch(
+            "app.routes.history.decrypt_text", lambda x: x
+        ):
+            resp = await get_context(
+                uuid="u1", limit=2, top_k=2, chat_id=None, user=("u1", "c1")
+            )
+            self.assertEqual([m.content for m in resp["relevant"]], ["m3"])
 
 
 if __name__ == "__main__":

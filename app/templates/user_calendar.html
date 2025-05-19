@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-4">Calendar for {{ uuid }}</h1>
+<ul class="list-group mb-3">
+{% for e in events %}
+    <li class="list-group-item">{{ e.when }} — {{ e.text }}</li>
+{% endfor %}
+</ul>
+<a href="/company/dashboard" class="btn btn-link">Back</a>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-4">Register User</h1>
+<form action="/user/register_page" method="post" class="mb-3">
+    <div class="mb-3">
+        <label class="form-label">User ID</label>
+        <input type="text" name="uuid" value="{{ uuid or '' }}" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Password</label>
+        <input type="password" name="password" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Company ID</label>
+        <input type="text" name="company_id" value="{{ company_id or '' }}" class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">Register</button>
+</form>
+{% if token %}
+<p class="alert alert-success">Token: {{ token }}</p>
+{% endif %}
+{% endblock %}

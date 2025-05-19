@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-4">Dashboard for {{ company }}</h1>
+
+<div class="row mb-4">
+    <div class="col-md-4 col-sm-6 mb-3">
+        <div class="card summary-card shadow-sm border-0">
+            <div class="card-body">
+                <h5 class="card-title">Total Messages</h5>
+                <p class="card-text fs-4">{{ usage.messages }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 col-sm-6 mb-3">
+        <div class="card summary-card shadow-sm border-0">
+            <div class="card-body">
+                <h5 class="card-title">Total Tokens</h5>
+                <p class="card-text fs-4">{{ usage.tokens }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 col-sm-6 mb-3">
+        <div class="card summary-card shadow-sm border-0">
+            <div class="card-body">
+                <h5 class="card-title">Total Cost</h5>
+                <p class="card-text fs-4 cost">{{ cost }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2>Users</h2>
+<div class="table-responsive mb-4">
+    <table class="table table-striped">
+        <tr><th>User</th><th>Messages</th><th>Tokens</th><th>Cost</th><th>Links</th></tr>
+        {% for u in users %}
+        <tr>
+            <td>{{ u }}</td>
+            <td>{{ user_usage[u].messages }}</td>
+            <td>{{ user_usage[u].tokens }}</td>
+            <td>{{ user_usage[u].cost }}</td>
+            <td>
+        <a href="/company/history?uuid={{ u }}" class="btn btn-outline-primary btn-sm me-2 mb-1">history</a>
+        <a href="/company/facts?uuid={{ u }}" class="btn btn-outline-primary btn-sm me-2 mb-1">facts</a>
+        <a href="/company/summary?uuid={{ u }}" class="btn btn-outline-primary btn-sm me-2 mb-1">summary</a>
+        <a href="/company/calendar?uuid={{ u }}" class="btn btn-outline-primary btn-sm mb-1">calendar</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div class="stats mt-4">
+    <h2>Usage</h2>
+    <canvas id="usageChart" height="100"></canvas>
+    <canvas id="costChart" height="100" class="mt-4"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const labels = {{ labels|tojson }};
+    const messagesData = {{ messages_data|tojson }};
+    const tokensData = {{ tokens_data|tojson }};
+    const costData = {{ cost_data|tojson }};
+
+    new Chart(document.getElementById('usageChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Messages',
+                    data: messagesData,
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                },
+                {
+                    label: 'Tokens',
+                    data: tokensData,
+                    backgroundColor: 'rgba(255, 206, 86, 0.6)',
+                },
+            ],
+        },
+        options: { responsive: true }
+    });
+
+    new Chart(document.getElementById('costChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Cost',
+                data: costData,
+                backgroundColor: 'rgba(75, 192, 192, 0.6)',
+            }],
+        },
+        options: { responsive: true }
+    });
+</script>
+{% endblock %}

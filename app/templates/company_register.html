@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-4">Register Company</h1>
+<form action="/company/register_page" method="post" class="mb-3">
+    <div class="mb-3">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" value="{{ name or '' }}" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Password</label>
+        <input type="password" name="password" class="form-control">
+    </div>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="enable_summary" {% if enable_summary %}checked{% endif %} id="enable_summary">
+        <label class="form-check-label" for="enable_summary">Enable Summary</label>
+    </div>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="enable_facts" {% if enable_facts %}checked{% endif %} id="enable_facts">
+        <label class="form-check-label" for="enable_facts">Enable Facts</label>
+    </div>
+    <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="enable_calendar" {% if enable_calendar %}checked{% endif %} id="enable_calendar">
+        <label class="form-check-label" for="enable_calendar">Enable Calendar</label>
+    </div>
+    <button type="submit" class="btn btn-primary">Register</button>
+</form>
+{% if token %}
+<p class="alert alert-success">Token: {{ token }}</p>
+<a href="/company/dashboard" class="btn btn-link">Dashboard</a>
+{% endif %}
+{% endblock %}

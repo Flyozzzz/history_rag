@@ -16,11 +16,16 @@ import os
 import uuid
 
 import httpx
+import logging
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000")
+ADMIN_KEY = os.getenv("ADMIN_KEY", "123123123ff")
 
 
-async def _happy_path(client: httpx.AsyncClient, user_id: str):
+async def _happy_path(client: httpx.AsyncClient, user_id: str, token: str):
+    logger.info("Running happy path for %s", user_id)
     messages = [
         {"role": "user", "content": "Привет, ассистент!", "type": "text"},
         {"role": "assistant", "content": "Здравствуйте! Чем могу помочь сегодня?", "type": "text"},
@@ -92,33 +97,74 @@ async def _happy_path(client: httpx.AsyncClient, user_id: str):
 
         # ending
         {"role": "assistant", "content": "Суббота +25 °C, без ветра — идеальные условия для игры!", "type": "text"},
-        {"role": "user", "content": "Спасибо, ты лучший!", "type": "text"},
+        {"role": "user", "content": "напомни мне в пятницу сдать отчет к 18:00", "type": "text"},
         {"role": "assistant", "content": "Рада помочь 😊", "type": "text"}
     ]
 
-    resp = await client.post("/add", json={"uuid": user_id, "messages": messages})
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.post("/add", json={"uuid": user_id, "messages": messages}, headers=headers)
     resp.raise_for_status()
     assert resp.json()["stream_ids"], "Сервер не вернул id сообщений"
 
     # 2) читаем историю
-    resp = await client.get("/history", params={"uuid": user_id, "limit": 10})
+    resp = await client.get("/history", params={"uuid": user_id, "limit": 38}, headers=headers)
     resp.raise_for_status()
     history = resp.json()["messages"]
     print("History:", history)
 
     # 3) запрашиваем summary
-    resp = await client.post("/summary", params={"uuid": user_id})
+    resp = await client.post("/summary", params={"uuid": user_id}, headers=headers)
     resp.raise_for_status()
     summary = resp.json()["summary"]
     print("Summary:", summary)
     assert summary, "Пустая суммаризация"
 
+    resp = await client.get("/context", params={"uuid": user_id, "limit": 10, "top_k": 10}, headers=headers)
+    resp.raise_for_status()
+    history = resp.json()["messages"]
+    print("History:", history)
+    print(resp.json())
+
+async def create_company(client: httpx.AsyncClient, name: str) -> str:
+    resp = await client.post(
+        "/register_company",
+        json={"name": name, "password": "pass"},
+        headers={"X-Admin-Key": ADMIN_KEY},
+    )
+    resp.raise_for_status()
+    return resp.json()["token"]
+
+
+async def create_user(client: httpx.AsyncClient, user: str, company: str) -> str:
+    resp = await client.post(
+        "/register",
+        json={"username": user, "password": "pass", "company_id": company},
+        headers={"X-Admin-Key": ADMIN_KEY},
+    )
+    resp.raise_for_status()
+    return resp.json()["token"]
+
 
 async def main():
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=10.0) as client:
-        await _happy_path(client, str(12333))
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=40.0) as client:
+        company_id = f"c123a1"
+        company_token = await create_company(client, company_id)
+        print(company_token)
+        user_id = f"u123a1"
+        user_token = await create_user(client, user_id, company_id)
+        print(user_token)
+        await _happy_path(client, user_id, user_token)
+        resp = await client.get(
+            "/company/dashboard",
+            headers={"Authorization": f"Bearer {company_token}"},
+        )
+        resp.raise_for_status()
+        print(resp)
+        print(resp.text)
+        print("Dashboard HTML length:", len(resp.text))
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
